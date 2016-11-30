@@ -168,7 +168,8 @@ Note, use BORG_PASSPHRASE environment variable for setting the password for auto
 
     if(@filtered_dir_configs == 0)
     {
-      die "No files to backup!";
+      print "No files to backup!";
+      exit 0;
     }
 
     print  "Backing up the following directory configs:\n";
@@ -466,10 +467,10 @@ sub borg_prune
 {
     my ($borg_path, $repo_path, $archive_name, @prune_options) = @_;
 
-    my $repo_archive_prefix = $repo_path."::".$archive_name."-";
+    my $archive_prefix = $archive_name."-";
 
-    run_command($borg_path, qw { prune --prefix},$repo_archive_prefix,
-		@prune_options);
+    run_command($borg_path, qw { prune --prefix},$archive_prefix,
+		@prune_options,$repo_path);
    
 }
 
