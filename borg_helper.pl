@@ -6,7 +6,7 @@ use JSON;
 
 
 my @CONFIG_KEYS = (
- [qw {default_repo default_archive dir_config_filenames allowed_owners search_roots archives repos skip_paths}],[]);
+ [qw {default_repo default_archive dir_config_filenames allowed_owners search_roots archives repos skip_paths}],[qw {borg_path}]);
 
 my @ARCHIVE_KEYS = (
  [qw {name create_options}],[qw {prune_options}]);
@@ -165,14 +165,14 @@ Note, use BORG_PASSPHRASE environment variable for setting the password for auto
     print  "Backing up the following directory configs:\n";
     print  join("\n",map($_->{filename},@filtered_dir_configs))."\n\n";
 
-    borg_create_archive($repo_config->{repo_path},\@filtered_dir_configs,
+    borg_create_archive($config->{borg_path},$repo_config->{repo_path},\@filtered_dir_configs,
            $archive_config->{create_options},
            $archive_config->{name});
 
     if($archive_config->{prune_options})
     {
 	print "Pruning old backups\n\n";
-	borg_prune($repo_config->{repo_path},$archive_name, 
+	borg_prune($config->{borg_path},$repo_config->{repo_path},$archive_name, 
 		   @{$archive_config->{prune_options}});
     }
     
@@ -233,6 +233,8 @@ sub standardize_main_config
     }
 
     $config->{allowed_uids} = \@uids;
+
+    $config->{borg_path} = "borg" unless defined $config->{borg_path};
 }
 
 #verifies keys_to_check are in (mand_keys + opt_keys), and mand_keys <= keys_to_check
@@ -389,7 +391,7 @@ sub check_repo_and_archive
 #this creates an archive using borg
 sub borg_create_archive
 {
-    my ($repo_path,$dir_configs,$borg_options, $archive_name) = @_;
+    my ($borg_path,$repo_path,$dir_configs,$borg_options, $archive_name) = @_;
 
     my @exclude_options = 
 	map { create_borg_exclude_options($_->{path}, $_->{excludes});} @$dir_configs;
@@ -419,7 +421,7 @@ sub borg_create_archive
 	die "Can't find explicitly included file: $p" unless -e $p;
     }
 
-    run_command(qw { borg create },@$borg_options, 
+    run_command($borg_path, 'create',@$borg_options, 
 		(map { ("-e",$_) } @exclude_options), $repo_archive, @paths);
 }
 
@@ -433,18 +435,18 @@ sub run_command
     else
     {
 	print "**Running:".join(" ",(map { s/(.*)/'$1'/; $_} @command))."\n";
-	system(@command);
+	system(@command) == 0 or die "Failed with status $?" ;
     }
 }
 
 
 sub borg_prune
 {
-    my ($repo_path, $archive_name, @prune_options) = @_;
+    my ($borg_path, $repo_path, $archive_name, @prune_options) = @_;
 
     my $repo_archive_prefix = $repo_path."::".$archive_name."-";
 
-    run_command(qw { borg prune --prefix},$repo_archive_prefix,
+    run_command($borg_path, qw { prune --prefix},$repo_archive_prefix,
 		@prune_options);
    
 }
