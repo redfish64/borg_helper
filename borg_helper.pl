@@ -9,7 +9,7 @@ my @CONFIG_KEYS = (
  [qw {default_repo dir_config_filenames allowed_owners search_roots archives repos}],[]);
 
 my @ARCHIVE_KEYS = (
- [qw {name}],[qw {prune_options}]);
+ [qw {name create_options}],[qw {prune_options}]);
 
 my @REPO_KEYS = (
  [qw {name default_archive repo_path archives}],[qw {prune_options}]);
@@ -44,34 +44,36 @@ sub main
 
     if(@ARGV != 2)
     {
-	print "Usage: $0 [-n] [-c config-file] <repo> <archive>
+	print "Usage: $0 [-n] [-c config-file] <repo> <archive>".'
 
 This helps automate borg. Instead of having a single backup script,
 we have backup configuration files scattered throughout the filesystem,
 one for each directory tree we want to backup. This way if we reorganize 
-directories, or copy data from one server to another, we won't have to
-continually update the backup script.
+directories, or copy data from one server to another, we won\'t have to
+continually update the corresponding backup script.
 
-In general you need to set up a config file and for each directory to be
-backed up, place a specially named directory specific file. 
+For instance, lets say you changed a configuration of your server in
+a specific way in some deep down hidden directory. Instead of finding
+and updating a global backup script you simply run:
 
-An empty directory specific file will use defaults. So a quick way to
-backup a dir would be \"touch <FILE>\". ".'
+touch BACKUP_DIR
+
+and the automated backup will pick it up and use default settings to
+backup the directory. (Assuming that "BACKUP_DIR" is
+one of your chosen names for directory backup filenames)
+
+You can add configuration options inside directory specific backup files
+if you want to do special things, like have multiple archive types, etc.
 
 All repos and archives mentioned in dir specific config files *must* 
 be represented in main config file, or an error will occur. This prevents
 typos in dir config files preventing a backup.
 
-Caveat: Note that currently each dir_config_file is backed up in a separate borg
-archive. This is because it is difficult to modify excludes to have an
-enforced root (otherwise a dir_config_file could inadvertantly exclude
-another dirs files). 
-
 -n dry run
 -c config-file - defaults to ~/.borg_helper
 repo - repo to backup
 archive - This value filters the dir_config_files to use. Only dir_config_files
-with a matching archive will be backed up. (The idea here is to have a separate archive for long lived backups vs prunable backups)
+with a matching archive will be backed up. (The idea here is to have a separate archive for long lived backups with historical data vs prunable backups without)
 
 Pruning:
 
@@ -106,13 +108,19 @@ ex dir config file
     "archive":"single",
     "excludes": ["re:\.o$" ]
 }
+
+ex running:
+
+borg_helper.pl private single
+
+Note, use BORG_PASSPHRASE environment variable for setting the password for automated backups
 ';
        exit -1;
     }
 
     use JSON;
 
-    my ($repo_name, $cat_name) = @ARGV;
+    my ($repo_name, $archive_name) = @ARGV;
 
     my $config = read_json_file($config_filename);
 
@@ -121,7 +129,7 @@ ex dir config file
     print  "Config verified.\n\n";
 
     my $repo_config = get_named_config($config->{repos},$repo_name);
-    my $cat_config = get_named_config($config->{archives},$cat_name);
+    my $archive_config = get_named_config($config->{archives},$archive_name);
 
 
     my @dir_config_files = search_for_dir_config_files($config->{dir_config_filenames},$config->{allowed_uids},$config->{search_roots});
@@ -141,22 +149,20 @@ ex dir config file
 
     check_repo_and_archive($config,@dir_configs);
 
-    my @filtered_dir_configs = grep($_->{repo} eq $repo_name && $_->{archive} eq $cat_name, @dir_configs);
+    my @filtered_dir_configs = grep($_->{repo} eq $repo_name && $_->{archive} eq $archive_name, @dir_configs);
 
-    print  "Backing up the following directory configs\n\n";
+    print  "Backing up the following directory configs:\n";
     print  join("\n",map($_->{filename},@filtered_dir_configs))."\n\n";
 
-    foreach my $dir_config (@filtered_dir_configs)
-    {
-	print  "Backing up ".$dir_config->{filename}."\n";
-	borg_create_archive($repo_config->{repo_path},$dir_config);
-    }
+    borg_create_archive($repo_config->{repo_path},\@filtered_dir_configs,
+           $archive_config->{create_options},
+           $archive_config->{name});
 
-    if($cat_config->{prune_options})
+    if($archive_config->{prune_options})
     {
 	print "Pruning old backups\n\n";
-	borg_prune($repo_config->{repo_path},$cat_name, 
-		   $cat_config->{prune_options});
+	borg_prune($repo_config->{repo_path},$archive_name, 
+		   @{$archive_config->{prune_options}});
     }
     
     print "Complete!\n";
@@ -193,11 +199,11 @@ sub standardize_main_config
     
     verify_keys($config_filename,@CONFIG_KEYS, $config);
 
-    $config->{cat_names} = [];
+    $config->{archive_names} = [];
     foreach my $cat (@{$config->{archives}})
     {
 	verify_keys($config_filename."/archives/".$cat->{name},@ARCHIVE_KEYS, $cat);
-	push @{$config->{cat_names}}, $cat->{name};
+	push @{$config->{archive_names}}, $cat->{name};
     }
     
     $config->{repo_names} = [];
@@ -329,7 +335,9 @@ sub standardize_dir_config
     $config->{repo} = $default_repo unless defined $config->{repo};
     $config->{archive} = $default_archive unless defined $config->{archive};
     $config->{excludes} = [] unless defined $config->{excludes};
-    
+    $config->{filename} = $config_filename;
+    $config->{path} = $config_filename;
+    $config->{path} =~ s~(.*)/.*~$1/~;
 }
 
 sub check_repo_and_archive
@@ -337,7 +345,7 @@ sub check_repo_and_archive
     my ($config,@dir_configs) = @_;
 
     my %cats;
-    @cats{@{$config->{cat_names}}} = 1;
+    @cats{@{$config->{archive_names}}} = 1;
 
     my %repos;
     @repos{@{$config->{repo_names}}} = 1;
@@ -368,7 +376,7 @@ sub borg_create_archive
     my @paths = map { $_->{path} } @$dir_configs;
 
     run_command(qw { borg create },@$borg_options, 
-		map { ("-e",$_) } @exclude_options, $repo_archive, @paths);
+		(map { ("-e",$_) } @exclude_options), $repo_archive, @paths);
 }
 
 sub run_command
@@ -376,15 +384,25 @@ sub run_command
     my @command = @_;
     if($dry_run)
     {
-	print STDERR "**Would run:".join(" ",map { s/(.*)/'$1'/} @command)."\n";
+	print STDERR "**Would run:".join(" ",(map { s/(.*)/'$1'/; $_} @command))."\n";
     }
     else
     {
-	die;
 	system(@command);
     }
 }
 
+
+sub borg_prune
+{
+    my ($repo_path, $archive_name, @prune_options) = @_;
+
+    my $repo_archive_prefix = $repo_path."::".$archive_name."-";
+
+    run_command(qw { borg prune --prefix},$repo_archive_prefix,
+		@prune_options);
+   
+}
 
 #converts a path and a directory exclude to a exclude pattern useable by borg that will exclude files that only start from the path given
 sub create_borg_exclude_options
