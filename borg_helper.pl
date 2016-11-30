@@ -6,7 +6,7 @@ use JSON;
 
 
 my @CONFIG_KEYS = (
- [qw {default_repo dir_config_filenames allowed_owners search_roots archives repos}],[]);
+ [qw {default_repo default_archive dir_config_filenames allowed_owners search_roots archives repos skip_paths}],[]);
 
 my @ARCHIVE_KEYS = (
  [qw {name create_options}],[qw {prune_options}]);
@@ -86,6 +86,7 @@ ex config file
     "dir_config_filenames":["TIMBACKUP"],
     "allowed_owners":["tim","user","root"]
 	"search_roots":["/"]
+	"skip_paths":["/sys","/proc","/dev"],
 	"archives":[{"name":"single", 
 		     "prune_options":"-d 1"}
 	],
@@ -132,7 +133,7 @@ Note, use BORG_PASSPHRASE environment variable for setting the password for auto
     my $archive_config = get_named_config($config->{archives},$archive_name);
 
 
-    my @dir_config_files = search_for_dir_config_files($config->{dir_config_filenames},$config->{allowed_uids},$config->{search_roots});
+    my @dir_config_files = search_for_dir_config_files($config->{dir_config_filenames},$config->{allowed_uids},$config->{search_roots}, $config->{skip_paths});
 
     print  "Found ".(@dir_config_files)." dir files:\n";
     print  join("\n",@dir_config_files)."\n\n";
@@ -149,7 +150,8 @@ Note, use BORG_PASSPHRASE environment variable for setting the password for auto
 
     check_repo_and_archive($config,@dir_configs);
 
-    my @filtered_dir_configs = grep($_->{repo} eq $repo_name && $_->{archive} eq $archive_name, @dir_configs);
+    my @filtered_dir_configs = 
+      grep {$_->{repo} eq $repo_name && $_->{archive} eq $archive_name} @dir_configs;
 
     print  "Backing up the following directory configs:\n";
     print  join("\n",map($_->{filename},@filtered_dir_configs))."\n\n";
@@ -230,9 +232,9 @@ sub verify_keys
     my ($prefix, $mand_keys,$opt_keys,$conf) = @_;
 
     my %mand_key_hash;
-    @mand_key_hash{@$mand_keys} = 1;
+    @mand_key_hash{@$mand_keys} = ();
     my %opt_key_hash;
-    @opt_key_hash{@$opt_keys} = 1;
+    @opt_key_hash{@$opt_keys} = ();
     
     foreach my $key (keys %$conf)
     {
@@ -270,15 +272,18 @@ sub get_named_config
 #returns filenames
 sub search_for_dir_config_files
 {
-    my ($filenames,$allowed_uids,$search_roots) = @_;
+    my ($filenames,$allowed_uids,$search_roots, $skip_paths) = @_;
 
     use File::Find;
 
     my %filenames;
-    @filenames{@$filenames} = 1;
+    @filenames{@$filenames} = ();
 
     my %allowed_uids;
-    @allowed_uids{@$allowed_uids} = 1;
+    @allowed_uids{@$allowed_uids} = ();
+
+    my %skip_paths;
+    @skip_paths{(map { s~/*$~~; $_;} @$skip_paths)} = (); #this enforces skip_paths do not end with '/' and puts them in the hash
 
     my @out;
 
@@ -286,6 +291,14 @@ sub search_for_dir_config_files
 	sub {
 	    my $filename = $_;
 	    my $dir = $File::Find::dir;
+	    my $path = $File::Find::name;
+
+	    if(exists $skip_paths{$path})
+	    {
+		print STDERR "Skipping $path\n";
+		$File::Find::prune = 1;
+		return;
+	    }
 
 	    if(exists $filenames{$filename})
 	    {
@@ -344,22 +357,22 @@ sub check_repo_and_archive
 {
     my ($config,@dir_configs) = @_;
 
-    my %cats;
-    @cats{@{$config->{archive_names}}} = 1;
+    my %archives;
+    @archives{@{$config->{archive_names}}} = ();
 
     my %repos;
-    @repos{@{$config->{repo_names}}} = 1;
+    @repos{@{$config->{repo_names}}} = ();
 
     foreach my $dir_config (@dir_configs)
     {
-	my $cat = $dir_config->{archive};
+	my $archive = $dir_config->{archive};
 	my $repo = $dir_config->{repo};
-	die "Can't find archive '$cat' from ".$dir_config->{filename}.
+	die "Can't find archive '$archive' from ".$dir_config->{filename}.
 	    " in main config file"
-	    unless $cats{$cat};
+	    unless exists $archives{$archive};
 	die "Can't find repo '$repo' from ".$dir_config->{filename}.
 	    " in main config file"
-	    unless $repos{$repo};
+	    unless exists $repos{$repo};
     }
 }
 
