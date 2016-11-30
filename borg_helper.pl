@@ -305,7 +305,7 @@ sub search_for_dir_config_files
 		if(!exists $allowed_uids{ (stat($_))[4] })
 		{
 		    print STDERR "WARNING: Found $filename at $dir with owner: "
-			.  getpwuid((stat($_))[4]).", ignoring";
+			.  getpwuid((stat($_))[4]).", ignoring\n";
 		}
 		else
 		{
