@@ -23,10 +23,10 @@ All repos and archives mentioned in dir specific config files *must*
 be represented in main config file, or an error will occur. This prevents
 typos in dir config files preventing a backup.
 
--n dry run
--c config-file - defaults to ~/.borg_helper
-repo - repo to backup
-archive - This value filters the dir_config_files to use. Only dir_config_files
+> -n dry run
+> -c config-file - defaults to ~/.borg_helper
+> repo - repo to backup
+> archive - This value filters the dir_config_files to use. Only dir_config_files
 with a matching archive will be backed up. (The idea here is to have a separate archive for long lived backups with historical data vs prunable backups without)
 
 Pruning:
@@ -34,37 +34,37 @@ Pruning:
 Pruning will be done automatically after a successful backup for the given archive. A prune will only be done if the archive has a "prune_options" variable 
 
 
-ex config file
-{
-    "default_repo":"private",
-    "dir_config_filenames":["TIMBACKUP"],
-    "allowed_owners":["tim","user","root"]
-	"search_roots":["/"]
-	"archives":[{"name":"single", 
-		     "prune_options":"-d 1"}
-	],
-    "repos":[
-	{"name":"private",
-	 "default_archive":"full",
-	 "repo_path":"/repo",
-	 "archives":["full","single","double"]
-	},
-	{"name":"autonomicwiki",
-	 "default_archive":"full",
-	 "archives":["full","single"]
-	}
-	]
-}
-
-ex dir config file
-{
-    "repo":"private",
-    "archive":"single",
-    "excludes": ["re:\.o$" ]
-}
-
-ex running:
-
-borg_helper.pl private single
+> ex config file
+> {
+>     "default_repo":"private",
+>     "dir_config_filenames":["TIMBACKUP"],
+>     "allowed_owners":["tim","user","root"]
+> 	"search_roots":["/"]
+> 	"archives":[{"name":"single", 
+> 		     "prune_options":"-d 1"}
+> 	],
+>     "repos":[
+> 	{"name":"private",
+> 	 "default_archive":"full",
+> 	 "repo_path":"/repo",
+> 	 "archives":["full","single","double"]
+> 	},
+> 	{"name":"autonomicwiki",
+> 	 "default_archive":"full",
+> 	 "archives":["full","single"]
+> 	}
+> 	]
+> }
+> 
+> ex dir config file
+> {
+>     "repo":"private",
+>     "archive":"single",
+>     "excludes": ["re:\.o$" ]
+> }
+> 
+> ex running:
+> 
+> borg_helper.pl private single
 
 Note, use BORG_PASSPHRASE environment variable for setting the password for automated backups
