@@ -414,6 +414,11 @@ sub borg_create_archive
 	map { $path.$_ } @only_backup;
     } @$dir_configs;
 
+    foreach my $p (@paths)
+    {
+	die "Can't find explicitly included file: $p" unless -e $p;
+    }
+
     run_command(qw { borg create },@$borg_options, 
 		(map { ("-e",$_) } @exclude_options), $repo_archive, @paths);
 }
