@@ -432,6 +432,7 @@ sub run_command
     }
     else
     {
+	print "**Running:".join(" ",(map { s/(.*)/'$1'/; $_} @command))."\n";
 	system(@command);
     }
 }
