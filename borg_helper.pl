@@ -42,6 +42,10 @@ sub main
 	else { last; }
     }
 
+    use Cwd 'abs_path';
+
+    $config_filename = abs_path($config_filename);
+
     if(@ARGV != 2)
     {
 	print "Usage: $0 [-n] [-c config-file] <repo> <archive>".'
@@ -162,12 +166,18 @@ Note, use BORG_PASSPHRASE environment variable for setting the password for auto
     my @filtered_dir_configs = 
       grep {$_->{repo} eq $repo_name && $_->{archive} eq $archive_name} @dir_configs;
 
+    if(@filtered_dir_configs == 0)
+    {
+      die "No files to backup!";
+    }
+
     print  "Backing up the following directory configs:\n";
     print  join("\n",map($_->{filename},@filtered_dir_configs))."\n\n";
 
     borg_create_archive($config->{borg_path},$repo_config->{repo_path},\@filtered_dir_configs,
            $archive_config->{create_options},
-           $archive_config->{name});
+           $archive_config->{name},
+           $config_filename);
 
     if($archive_config->{prune_options})
     {
@@ -299,10 +309,14 @@ sub search_for_dir_config_files
     my @out;
 
     find(
-	sub {
-	    my $filename = $_;
+	{ 
+	    no_chdir => 1,
+	    wanted =>
+		sub {
 	    my $dir = $File::Find::dir;
 	    my $path = $File::Find::name;
+	    my $filename = $path;
+	    $filename =~ s~.*/~~;
 
 	    if(exists $skip_paths{$path})
 	    {
@@ -325,7 +339,8 @@ sub search_for_dir_config_files
 	    }
 
 	    return 1;
-	}, @$search_roots);
+	}
+	    }, @$search_roots);
 
     @out;
 }
@@ -360,6 +375,13 @@ sub standardize_dir_config
     $config->{archive} = $default_archive unless defined $config->{archive};
     $config->{excludes} = [] unless defined $config->{excludes};
     $config->{only_backup} = ["."] unless defined $config->{only_backup};
+
+    my $no_path_filename = $config_filename;
+    $no_path_filename =~ s~.*/~~;
+    #we always include the dir config files in the backup so
+    #we have a record of them, regardless of only_backup
+    push @{$config->{only_backup}}, $no_path_filename;
+    
     $config->{filename} = $config_filename;
     $config->{path} = $config_filename;
     $config->{path} =~ s~(.*)/.*~$1/~;
@@ -391,7 +413,7 @@ sub check_repo_and_archive
 #this creates an archive using borg
 sub borg_create_archive
 {
-    my ($borg_path,$repo_path,$dir_configs,$borg_options, $archive_name) = @_;
+    my ($borg_path,$repo_path,$dir_configs,$borg_options, $archive_name,$main_config_file) = @_;
 
     my @exclude_options = 
 	map { create_borg_exclude_options($_->{path}, $_->{excludes});} @$dir_configs;
@@ -422,7 +444,7 @@ sub borg_create_archive
     }
 
     run_command($borg_path, 'create',@$borg_options, 
-		(map { ("-e",$_) } @exclude_options), $repo_archive, @paths);
+		(map { ("-e",$_) } @exclude_options), $repo_archive, $main_config_file, @paths);
 }
 
 sub run_command
@@ -434,7 +456,7 @@ sub run_command
     }
     else
     {
-	print "**Running:".join(" ",(map { $x = $_; s/(.*)/'$1'/; $x} @command))."\n";
+	print "**Running:".join(" ",(map { my $x = $_; s/(.*)/'$1'/; $x} @command))."\n";
 	system(@command) == 0 or die "Failed with status $?" ;
     }
 }
