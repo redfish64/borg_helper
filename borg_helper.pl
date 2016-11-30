@@ -321,7 +321,7 @@ sub search_for_dir_config_files
 
 	    if(exists $skip_paths{$path})
 	    {
-		print STDERR "Skipping $path\n";
+		print "Skipping $path\n";
 		$File::Find::prune = 1;
 		return;
 	    }
