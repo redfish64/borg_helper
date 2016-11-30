@@ -29,11 +29,9 @@ typos in dir config files preventing a backup.
 * archive - This value filters the dir_config_files to use. Only dir_config_files
 with a matching archive will be backed up. (The idea here is to have a separate archive for long lived backups with historical data vs prunable backups without)
 
-
 Pruning:
 
 Pruning will be done automatically after a successful backup for the given archive. A prune will only be done if the archive has a "prune_options" variable 
-
 
 ```
 ex config file
@@ -42,6 +40,7 @@ ex config file
     "dir_config_filenames":["TIMBACKUP"],
     "allowed_owners":["tim","user","root"]
 	"search_roots":["/"]
+	"skip_paths":["/sys","/proc","/dev"],
 	"archives":[{"name":"single", 
 		     "prune_options":"-d 1"}
 	],
@@ -62,6 +61,14 @@ ex dir config file
 {
     "repo":"private",
     "archive":"single",
+    "excludes": ["re:\.o$" ]
+}
+
+ex dir config file2
+{
+    "repo":"private",
+    "archive":"single",
+    "only_backup": ["onlyme", "o/onlyme2" ],
     "excludes": ["re:\.o$" ]
 }
 

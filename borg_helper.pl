@@ -15,7 +15,7 @@ my @REPO_KEYS = (
  [qw {name default_archive repo_path archives}],[qw {prune_options}]);
 
 my @DIR_CONFIG_KEYS = (
-    [],[qw {repo archive excludes}]);
+    [],[qw {repo archive excludes only_backup}]);
 
 my $dry_run = 0;
 
@@ -69,17 +69,17 @@ All repos and archives mentioned in dir specific config files *must*
 be represented in main config file, or an error will occur. This prevents
 typos in dir config files preventing a backup.
 
--n dry run
--c config-file - defaults to ~/.borg_helper
-repo - repo to backup
-archive - This value filters the dir_config_files to use. Only dir_config_files
+* -n dry run
+* -c config-file - defaults to ~/.borg_helper
+* repo - repo to backup
+* archive - This value filters the dir_config_files to use. Only dir_config_files
 with a matching archive will be backed up. (The idea here is to have a separate archive for long lived backups with historical data vs prunable backups without)
 
 Pruning:
 
 Pruning will be done automatically after a successful backup for the given archive. A prune will only be done if the archive has a "prune_options" variable 
 
-
+```
 ex config file
 {
     "default_repo":"private",
@@ -110,9 +110,18 @@ ex dir config file
     "excludes": ["re:\.o$" ]
 }
 
+ex dir config file2
+{
+    "repo":"private",
+    "archive":"single",
+    "only_backup": ["onlyme", "o/onlyme2" ],
+    "excludes": ["re:\.o$" ]
+}
+
 ex running:
 
 borg_helper.pl private single
+```
 
 Note, use BORG_PASSPHRASE environment variable for setting the password for automated backups
 ';
@@ -348,6 +357,7 @@ sub standardize_dir_config
     $config->{repo} = $default_repo unless defined $config->{repo};
     $config->{archive} = $default_archive unless defined $config->{archive};
     $config->{excludes} = [] unless defined $config->{excludes};
+    $config->{only_backup} = ["."] unless defined $config->{only_backup};
     $config->{filename} = $config_filename;
     $config->{path} = $config_filename;
     $config->{path} =~ s~(.*)/.*~$1/~;
@@ -386,7 +396,23 @@ sub borg_create_archive
 
     my $repo_archive = $repo_path."::".$archive_name."-{now:%Y-%m-%d-%H-%M}";
 
-    my @paths = map { $_->{path} } @$dir_configs;
+    my @paths = map { 
+	my $path = $_->{path};
+	my @only_backup = @{$_->{only_backup}};
+
+	@only_backup = map { s~^/*~/~; $_ } @only_backup;
+	
+	@only_backup = map { 
+	    s~^/*~/~; # one slash at start
+	    s~/*$~/~;  # one slash at end
+	    s~/\./~~g; # remove any /./
+	    
+	    s~^/*~~; #remove slash at start
+	    s~/*$~~; #remove slash at end
+	    $_; } @only_backup;
+
+	map { $path.$_ } @only_backup;
+    } @$dir_configs;
 
     run_command(qw { borg create },@$borg_options, 
 		(map { ("-e",$_) } @exclude_options), $repo_archive, @paths);
