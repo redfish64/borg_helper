@@ -456,7 +456,7 @@ sub run_command
     }
     else
     {
-	print "**Running:".join(" ",(map { my $x = $_; s/(.*)/'$1'/; $x} @command))."\n";
+	print "**Running:".join(" ",(map { my $x = $_; $x =~ s/(.*)/'$1'/; $x} @command))."\n";
 	system(@command) == 0 or die "Failed with status $?" ;
     }
 }
