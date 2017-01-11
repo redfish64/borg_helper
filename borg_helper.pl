@@ -208,7 +208,13 @@ sub read_json_file
 {
     my ($filename) = @_;
     my $text = read_file($filename);
-    decode_json $text or die "Can't parse json";
+    use Try::Tiny;
+    try {
+	decode_json $text;
+    } catch {
+	die "Can't parse json for $filename: $_";
+    };
+   
 }
 
 
@@ -471,7 +477,6 @@ sub borg_prune
 
     run_command($borg_path, qw { prune --prefix},$archive_prefix,
 		@prune_options,$repo_path);
-   
 }
 
 #converts a path and a directory exclude to a exclude pattern useable by borg that will exclude files that only start from the path given
